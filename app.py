@@ -90,50 +90,50 @@ def decrypt_whatsapp():
 
 @app.route('/encrypt', methods=['POST'])
 def encrypt_whatsapp():
-    """
-    Encripta respuesta para WhatsApp Flows
-    Body:
-    {
-        "response_data": {...},
-        "aes_key": "base64...",
-        "iv": "base64..."
-    }
-    """
     try:
-        data = request.json
-        if not all(k in data for k in ['response_data', 'aes_key', 'iv']):
-            return jsonify({'error': 'Missing required fields'}), 400
-
-        response_data = data['response_data']
-        aes_key = base64.b64decode(data['aes_key'])
-        iv = base64.b64decode(data['iv'])
-
-        # Invertir IV para respuesta
-        flipped_iv = bytes(reversed(iv))
-        print(f"🔐 Encrypting response. IV flipped: {flipped_iv.hex()[:16]}")
-
-        # Encriptar con AES-GCM
+        data = request.get_json()
+        
+        # 1. RECIBIR DATOS
+        response_data = data.get('response_data')  # JSON a encriptar
+        aes_key_base64 = data.get('aes_key')       # AES key en Base64
+        iv_base64 = data.get('iv')                 # IV en Base64
+        
+        # 2. DECODIFICAR Base64
+        aes_key = base64.b64decode(aes_key_base64)
+        iv = base64.b64decode(iv_base64)
+        
+        # 3. INVERTIR EL IV (CRÍTICO!)
+        flipped_iv = iv[::-1]
+        
+        # 4. CONVERTIR RESPONSE A JSON STRING
+        response_json = json.dumps(response_data)
+        
+        # 5. ENCRIPTAR CON AES-128-GCM
         cipher = Cipher(
-            algorithms.AES(aes_key),
+            algorithms.AES(aes_key), 
             modes.GCM(flipped_iv),
             backend=default_backend()
         )
         encryptor = cipher.encryptor()
-        json_str = json.dumps(response_data)
-        ciphertext = encryptor.update(json_str.encode()) + encryptor.finalize()
-
-        # Concatenar ciphertext + auth_tag
-        encrypted = ciphertext + encryptor.tag
-        encrypted_b64 = base64.b64encode(encrypted).decode()
-        print(f"✅ Encrypted successfully. Length: {len(encrypted_b64)}")
-
+        
+        ciphertext = encryptor.update(response_json.encode('utf-8'))
+        ciphertext += encryptor.finalize()
+        
+        # 6. CONCATENAR: ciphertext + auth_tag (16 bytes)
+        encrypted_data = ciphertext + encryptor.tag
+        
+        # 7. ENCODEAR A BASE64
+        encrypted_base64 = base64.b64encode(encrypted_data).decode('utf-8')
+        
+        # 8. RETORNAR COMO JSON (n8n lo convertirá a text/plain)
         return jsonify({
             'success': True,
-            'encrypted_response': encrypted_b64
+            'encrypted_response': encrypted_base64
         })
+        
     except Exception as e:
-        print(f"❌ Encryption error: {str(e)}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        app.logger.error(f'❌ Encryption error: {str(e)}')
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

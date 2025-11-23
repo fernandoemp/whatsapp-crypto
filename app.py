@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -46,7 +46,7 @@ def decrypt_whatsapp():
         # Cargar llave privada
         private_key = serialization.load_pem_private_key(
             PRIVATE_KEY_PEM.encode() if isinstance(PRIVATE_KEY_PEM, str) else PRIVATE_KEY_PEM,
-            password=PASSPHRASE,
+            password=PASSPHRASE or None,
             backend=default_backend()
         )
 
@@ -102,8 +102,7 @@ def encrypt_whatsapp():
         aes_key = base64.b64decode(aes_key_base64)
         iv = base64.b64decode(iv_base64)
         
-        # 3. INVERTIR EL IV (CRÍTICO!)
-        flipped_iv = iv[::-1]
+        flipped_iv = bytes((~b) & 0xFF for b in iv)
         
         # 4. CONVERTIR RESPONSE A JSON STRING
         response_json = json.dumps(response_data)
@@ -126,10 +125,7 @@ def encrypt_whatsapp():
         encrypted_base64 = base64.b64encode(encrypted_data).decode('utf-8')
         
         # 8. RETORNAR COMO JSON (n8n lo convertirá a text/plain)
-        return jsonify({
-            'success': True,
-            'encrypted_response': encrypted_base64
-        })
+        return Response(encrypted_base64, mimetype='text/plain')
         
     except Exception as e:
         app.logger.error(f'❌ Encryption error: {str(e)}')
